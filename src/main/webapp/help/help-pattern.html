@@ -26,7 +26,7 @@
   <p>
     The pattern is used to match item names (jobs, agents, folders, etc.).
     This means that the permissions you are assigning to this role will only be valid for an item 
-    having a name matching this pattern.<br>
+    having a name matching this pattern.<br> For folders you can use recursive RegEX eg. (?i)foo($|/.*) 
     Item names in Jenkins are case-insensitive while agent names are case-sensitive. Adding <b>(?i)</b>
     to the start of the pattern will make it case-insensitive. 
   </p>
