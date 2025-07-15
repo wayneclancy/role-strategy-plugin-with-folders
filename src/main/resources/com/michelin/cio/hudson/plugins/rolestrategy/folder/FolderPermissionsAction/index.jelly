@@ -1,0 +1,183 @@
+<?jelly escape-by-default='true'?>
+<j:jelly xmlns:j="jelly:core" xmlns:st="jelly:stapler" xmlns:d="jelly:define" xmlns:l="/lib/layout" xmlns:t="/lib/hudson" xmlns:f="/lib/form">
+  <l:layout title="Folder Permissions - ${it.folder.displayName}" permission="${app.ADMINISTER}">
+    <l:side-panel>
+      <st:include page="sidepanel.jelly" it="${it.folder}" optional="true"/>
+    </l:side-panel>
+    <l:main-panel>
+      <h1>Folder Permissions for: ${it.folder.displayName}</h1>
+      <p><strong>Folder Path:</strong> ${it.folderPath}</p>
+      
+      <!-- Current Roles Section -->
+      <h2>Current Roles (${it.applicableRoles.size()})</h2>
+      
+      <j:choose>
+        <j:when test="${it.applicableRoles.isEmpty()}">
+          <p>No roles currently apply to this folder.</p>
+        </j:when>
+        <j:otherwise>
+          <table class="sortable pane bigtable" style="margin-top: 0px;">
+            <tr>
+              <th>Role Name</th>
+              <th>Pattern</th>
+              <th>Assigned Users/Groups</th>
+              <th>Actions</th>
+            </tr>
+            <j:forEach var="entry" items="${it.applicableRoles.entrySet()}">
+              <tr>
+                <td><strong>${entry.key.name}</strong></td>
+                <td><code>${entry.key.pattern.pattern()}</code></td>
+                <td>
+                  <j:choose>
+                    <j:when test="${entry.value.isEmpty()}">
+                      <em>No assignments</em>
+                    </j:when>
+                    <j:otherwise>
+                      <j:forEach var="assignment" items="${entry.value}">
+                        <div style="margin: 2px 0;">
+                          ${assignment}
+                          <f:form method="post" action="unassignRole" style="display: inline; margin-left: 10px;">
+                            <f:hidden name="roleName" value="${entry.key.name}"/>
+                            <f:hidden name="userOrGroup" value="${assignment}"/>
+                            <f:submit value="Remove" class="jenkins-button jenkins-button--tertiary" 
+                                      onclick="return confirm('Remove ${assignment} from role ${entry.key.name}?')"/>
+                          </f:form>
+                        </div>
+                      </j:forEach>
+                    </j:otherwise>
+                  </j:choose>
+                </td>
+                <td>
+                  <!-- Only show delete button if this role pattern matches exactly this folder -->
+                  <j:set var="expectedPattern" value="^${it.folderPath.replaceAll('([\\\\\\^\\$\\.\\|\\?\\*\\+\\(\\)\\[\\{])', '\\\\$1')}($|/.*)"/>
+                  <j:if test="${entry.key.pattern.pattern().equals(expectedPattern)}">
+                    <f:form method="post" action="deleteRole" style="display: inline;">
+                      <f:hidden name="roleName" value="${entry.key.name}"/>
+                      <f:submit value="Delete Role" class="jenkins-button jenkins-button--destructive" 
+                                onclick="return confirm('Delete role ${entry.key.name}? This cannot be undone.')"/>
+                    </f:form>
+                  </j:if>
+                </td>
+              </tr>
+            </j:forEach>
+          </table>
+        </j:otherwise>
+      </j:choose>
+      
+      <!-- Create New Role Form -->
+      <h2>Create New Role</h2>
+      
+      <f:form method="post" action="createFolderRole" class="jenkins-form">
+        <f:entry title="Role Name">
+          <f:textbox name="roleName" placeholder="e.g., WayneDevRole"/>
+        </f:entry>
+        
+        <f:entry title="Role Template">
+          <select name="roleTemplate" class="jenkins-select">
+            <option value="">-- Select a template --</option>
+            <j:forEach var="template" items="${it.roleTemplates.entrySet()}">
+              <option value="${template.key}">${template.key}</option>
+            </j:forEach>
+          </select>
+        </f:entry>
+        
+        <f:entry title="Permissions">
+          <div style="max-height: 200px; overflow-y: auto; border: 1px solid #ddd; padding: 10px; background: white;">
+            <j:forEach var="permission" items="${it.availablePermissions}">
+              <div style="margin-bottom: 5px;">
+                <f:checkbox name="permissions" value="${permission.id}" id="perm_${it.getPermissionHtmlId(permission)}"/>
+                <label for="perm_${it.getPermissionHtmlId(permission)}" style="margin-left: 5px;">
+                  ${it.getPermissionDisplayName(permission)}
+                </label>
+              </div>
+            </j:forEach>
+          </div>
+        </f:entry>
+        
+        <f:entry>
+          <f:submit value="Create Role" class="jenkins-button jenkins-button--primary"/>
+        </f:entry>
+      </f:form>
+      
+      <!-- Assign User to Role Form -->
+      <j:if test="${!it.applicableRoles.isEmpty()}">
+        <h2>Assign User to Role</h2>
+        <f:form method="post" action="assignRole" class="jenkins-form">
+          <f:entry title="Role">
+            <select name="roleName" class="jenkins-select">
+              <j:forEach var="role" items="${it.applicableRoles.keySet()}">
+                <option value="${role.name}">${role.name}</option>
+              </j:forEach>
+            </select>
+          </f:entry>
+          
+          <f:entry title="User/Group">
+            <f:textbox name="userOrGroup" placeholder="username or group name"/>
+          </f:entry>
+          
+          <f:entry title="Type">
+            <select name="type" class="jenkins-select">
+              <option value="user">User</option>
+              <option value="group">Group</option>
+            </select>
+          </f:entry>
+          
+          <f:entry>
+            <f:submit value="Assign Role" class="jenkins-button jenkins-button--primary"/>
+          </f:entry>
+        </f:form>
+      </j:if>
+      
+      <!-- Available Permissions -->
+      <h2>Available Permissions</h2>
+      <table class="sortable pane bigtable" style="margin-top: 0px;">
+        <tr>
+          <th>Permission</th>
+          <th>ID</th>
+          <th>Description</th>
+        </tr>
+        <j:forEach var="permission" items="${it.availablePermissions}">
+          <tr>
+            <td><strong>${it.getPermissionDisplayName(permission)}</strong></td>
+            <td><code>${permission.id}</code></td>
+            <td>
+              <j:choose>
+                <j:when test="${permission.id == 'jenkins.model.Jenkins.Read'}">Overall read access to Jenkins</j:when>
+                <j:when test="${permission.id == 'jenkins.model.Jenkins.Administer'}">Full administrative access to Jenkins</j:when>
+                <j:when test="${permission.id == 'hudson.model.Item.Read'}">Read access to view folder contents</j:when>
+                <j:when test="${permission.id == 'hudson.model.Item.Configure'}">Configure folder settings and jobs</j:when>
+                <j:when test="${permission.id == 'hudson.model.Item.Delete'}">Delete folders and jobs</j:when>
+                <j:when test="${permission.id == 'hudson.model.Item.Build'}">Trigger builds in this folder</j:when>
+                <j:when test="${permission.id == 'hudson.model.Item.Workspace'}">Access job workspaces</j:when>
+                <j:when test="${permission.id == 'hudson.model.Item.Cancel'}">Cancel running builds</j:when>
+                <j:when test="${permission.id == 'hudson.model.Item.Discover'}">Discover items (see them in lists)</j:when>
+                <j:when test="${permission.id == 'hudson.model.Item.Create'}">Create new items in this folder</j:when>
+                <j:when test="${permission.id == 'hudson.model.Run.Delete'}">Delete build records</j:when>
+                <j:when test="${permission.id == 'hudson.model.Run.Update'}">Update build information</j:when>
+                <j:when test="${permission.id == 'hudson.model.View.Read'}">Read access to views</j:when>
+                <j:when test="${permission.id == 'hudson.model.View.Configure'}">Configure views</j:when>
+                <j:when test="${permission.id == 'hudson.model.View.Create'}">Create new views</j:when>
+                <j:when test="${permission.id == 'hudson.model.View.Delete'}">Delete views</j:when>
+                <j:otherwise>Standard Jenkins permission</j:otherwise>
+              </j:choose>
+            </td>
+          </tr>
+        </j:forEach>
+      </table>
+      
+      <!-- Debug Section -->
+      <h2>Debug: Check User Roles</h2>
+      <f:form method="get" action="checkUserRoles" class="jenkins-form">
+        <f:entry title="Username">
+          <f:textbox name="username" placeholder="e.g., wayne"/>
+        </f:entry>
+        <f:entry>
+          <f:submit value="Check Roles" class="jenkins-button"/>
+        </f:entry>
+      </f:form>
+      
+      <p><strong>Note:</strong> This is a functional interface for managing folder permissions!</p>
+      
+    </l:main-panel>
+  </l:layout>
+</j:jelly>
